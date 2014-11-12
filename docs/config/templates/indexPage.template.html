@@ -68,8 +68,12 @@
     })();
   </script>
 </head>
-<body>
+<body ng-class="{fullscreen: fullscreen}">
   <div id="wrapper">
+    <div id="fullscreen-button">
+      <i class="glyphicon {{fullscreen ? 'glyphicon-resize-small' : 'glyphicon-fullscreen'}}"
+         ng-click="fullscreen=!fullscreen"></i>
+    </div>
     <header scroll-y-offset-element class="header header-fixed">
       <section class="navbar navbar-inverse docs-navbar-primary" ng-controller="DocsSearchCtrl">
         <div class="container">

@@ -690,3 +690,65 @@ ul.events > li {
     padding-bottom:0px;
   }
 }
+
+@media print {
+  header,
+  footer,
+  .main-grid .grid-left,
+  a.improve-docs {
+    display: none !important;
+  }
+  .runnable-example-file {
+    display: block !important;
+  }
+  .main-body-grid {
+    margin-top: 0;
+    font-size: 110%;
+  }
+  .main-grid > .grid-right {
+    margin-bottom: 0;
+    margin-left: 0;
+  }
+  #wrapper {
+    padding-bottom: 0;
+  }
+}
+
+#fullscreen-button {
+  position: fixed;
+  top: 3px;
+  right: 3px;
+  padding: 3px;
+  background-color: #d9edf7;
+  border-color: #bce8f1;
+  color: #31708f;
+  font-size: 10px;
+  z-index: 99999;
+}
+
+.fullscreen #fullscreen-button {
+  background-color: #eee;
+  border-color: #888;
+  color: #888;
+}
+
+.fullscreen header,
+.fullscreen footer,
+.fullscreen .main-grid .grid-left,
+.fullscreen a.improve-docs {
+  display: none !important;
+}
+
+.fullscreen .main-body-grid {
+  margin-top: 0;
+  font-size: 110%;
+}
+
+.fullscreen .main-grid > .grid-right {
+  margin-bottom: 0;
+  margin-left: 0;
+}
+
+.fullscreen #wrapper {
+  padding-bottom: 0;
+}

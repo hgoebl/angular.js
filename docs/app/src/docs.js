@@ -6,6 +6,8 @@ angular.module('DocsController', [])
   function($scope, $rootScope, $location, $window, $cookies, openPlunkr,
               NG_PAGES, NG_NAVIGATION, NG_VERSION) {
 
+  $scope.fullscreen = true;
+
   $scope.openPlunkr = openPlunkr;
 
   $scope.docsVersion = NG_VERSION.isSnapshot ? 'snapshot' : NG_VERSION.version;
