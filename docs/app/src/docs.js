@@ -1,9 +1,9 @@
 angular.module('DocsController', [])
 
 .controller('DocsController', [
-          '$scope', '$rootScope', '$location', '$window', '$cookies', 'openPlunkr',
+          '$scope', '$rootScope', '$location', '$window', '$cookies',
               'NG_PAGES', 'NG_NAVIGATION', 'NG_VERSION',
-  function($scope, $rootScope, $location, $window, $cookies, openPlunkr,
+  function($scope, $rootScope, $location, $window, $cookies,
               NG_PAGES, NG_NAVIGATION, NG_VERSION) {
 
   $scope.fullscreen = true;
@@ -15,6 +15,7 @@ angular.module('DocsController', [])
   $scope.navClass = function(navItem) {
     return {
       active: navItem.href && this.currentPage && this.currentPage.path,
+      current: this.currentPage && this.currentPage.path === navItem.href,
       'nav-index-section': navItem.type === 'section'
     };
   };

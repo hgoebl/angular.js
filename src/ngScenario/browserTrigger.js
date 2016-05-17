@@ -15,6 +15,7 @@
     if (!element) return;
 
     eventData = eventData || {};
+    var relatedTarget = eventData.relatedTarget || element;
     var keys = eventData.keys;
     var x = eventData.x;
     var y = eventData.y;
@@ -55,38 +56,36 @@
       if (window.WebKitTransitionEvent) {
         evnt = new WebKitTransitionEvent(eventType, eventData);
         evnt.initEvent(eventType, false, true);
-      }
-      else {
+      } else {
         try {
           evnt = new TransitionEvent(eventType, eventData);
         }
         catch (e) {
-          evnt = document.createEvent('TransitionEvent');
+          evnt = window.document.createEvent('TransitionEvent');
           evnt.initTransitionEvent(eventType, null, null, null, eventData.elapsedTime || 0);
         }
       }
-    }
-    else if (/animationend/.test(eventType)) {
+    } else if (/animationend/.test(eventType)) {
       if (window.WebKitAnimationEvent) {
         evnt = new WebKitAnimationEvent(eventType, eventData);
         evnt.initEvent(eventType, false, true);
-      }
-      else {
+      } else {
         try {
           evnt = new AnimationEvent(eventType, eventData);
         }
         catch (e) {
-          evnt = document.createEvent('AnimationEvent');
+          evnt = window.document.createEvent('AnimationEvent');
           evnt.initAnimationEvent(eventType, null, null, null, eventData.elapsedTime || 0);
         }
       }
-    }
-    else {
-      evnt = document.createEvent('MouseEvents');
+    } else if (/touch/.test(eventType) && supportsTouchEvents()) {
+      evnt = createTouchEvent(element, eventType, x, y);
+    } else {
+      evnt = window.document.createEvent('MouseEvents');
       x = x || 0;
       y = y || 0;
       evnt.initMouseEvent(eventType, true, true, window, 0, x, y, x, y, pressed('ctrl'),
-          pressed('alt'), pressed('shift'), pressed('meta'), 0, element);
+          pressed('alt'), pressed('shift'), pressed('meta'), 0, relatedTarget);
     }
 
     /* we're unable to change the timeStamp value directly so this
@@ -116,4 +115,35 @@
 
     return finalProcessDefault;
   };
+
+  function supportsTouchEvents() {
+    if ('_cached' in supportsTouchEvents) {
+      return supportsTouchEvents._cached;
+    }
+    if (!window.document.createTouch || !window.document.createTouchList) {
+      supportsTouchEvents._cached = false;
+      return false;
+    }
+    try {
+      window.document.createEvent('TouchEvent');
+    } catch (e) {
+      supportsTouchEvents._cached = false;
+      return false;
+    }
+    supportsTouchEvents._cached = true;
+    return true;
+  }
+
+  function createTouchEvent(element, eventType, x, y) {
+    var evnt = new window.Event(eventType);
+    x = x || 0;
+    y = y || 0;
+
+    var touch = window.document.createTouch(window, element, Date.now(), x, y, x, y);
+    var touches = window.document.createTouchList(touch);
+
+    evnt.touches = touches;
+
+    return evnt;
+  }
 }());

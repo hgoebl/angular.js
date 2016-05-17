@@ -70,6 +70,36 @@ describe('$route', function() {
     });
   });
 
+  it('should allow redirects while handling $routeChangeStart', function() {
+    module(function($routeProvider) {
+      $routeProvider.when('/some', {
+        id: 'some', template: 'Some functionality'
+      });
+      $routeProvider.when('/redirect', {
+        id: 'redirect'
+      });
+    });
+    module(provideLog);
+    inject(function($route, $location, $rootScope, $compile, log) {
+      $rootScope.$on('$routeChangeStart', function(event, next, current) {
+        if (next.id === 'some') {
+          $location.path('/redirect');
+        }
+      });
+      $compile('<div><div ng-view></div></div>')($rootScope);
+      $rootScope.$on('$routeChangeStart', log.fn('routeChangeStart'));
+      $rootScope.$on('$routeChangeError', log.fn('routeChangeError'));
+      $rootScope.$on('$routeChangeSuccess', log.fn('routeChangeSuccess'));
+      $rootScope.$apply(function() {
+        $location.path('/some');
+      });
+
+      expect($route.current.id).toBe('redirect');
+      expect($location.path()).toBe('/redirect');
+      expect(log).toEqual(['routeChangeStart', 'routeChangeStart', 'routeChangeSuccess']);
+    });
+  });
+
   it('should route and fire change event', function() {
     var log = '',
         lastRoute,
@@ -110,7 +140,7 @@ describe('$route', function() {
       $location.path('/NONE');
       $rootScope.$digest();
       expect(log).toEqual('before();after();');
-      expect($route.current).toEqual(null);
+      expect($route.current).toEqual(undefined);
     });
   });
 
@@ -168,7 +198,7 @@ describe('$route', function() {
       $location.path('/NONE');
       $rootScope.$digest();
       expect(log).toEqual('before();after();');
-      expect($route.current).toEqual(null);
+      expect($route.current).toEqual(undefined);
     });
   });
 
@@ -221,7 +251,7 @@ describe('$route', function() {
       $location.path('/BLANK');
       $rootScope.$digest();
       expect(log).toEqual('before();after();');
-      expect($route.current).toEqual(null);
+      expect($route.current).toEqual(undefined);
 
       log = '';
       $location.path('/Book2/Moby/one/two/Chapter/Intro').search('p=123');
@@ -233,7 +263,7 @@ describe('$route', function() {
       $location.path('/BOOK2/Moby/one/two/CHAPTER/Intro').search('p=123');
       $rootScope.$digest();
       expect(log).toEqual('before();after();');
-      expect($route.current).toEqual(null);
+      expect($route.current).toEqual(undefined);
     });
   });
 
@@ -273,7 +303,7 @@ describe('$route', function() {
         event.preventDefault();
       });
 
-      $rootScope.$on('$beforeRouteChange', function(event) {
+      $rootScope.$on('$routeChangeSuccess', function(event) {
         throw new Error('Should not get here');
       });
 
@@ -296,13 +326,13 @@ describe('$route', function() {
       expect($route.current).toBeUndefined();
     }));
 
-    it('matches literal *', inject(function($route, $location, $rootScope) {
+    it('matches literal .', inject(function($route, $location, $rootScope) {
       $location.path('/$testX23/foo*(bar)/222');
       $rootScope.$digest();
       expect($route.current).toBeUndefined();
     }));
 
-    it('matches literal .', inject(function($route, $location, $rootScope) {
+    it('matches literal *', inject(function($route, $location, $rootScope) {
       $location.path('/$test.23/foooo(bar)/222');
       $rootScope.$digest();
       expect($route.current).toBeUndefined();
@@ -373,7 +403,7 @@ describe('$route', function() {
       $rootScope.$on('$routeChangeStart', callback);
       $location.path('/test');
       $rootScope.$digest();
-      callback.reset();
+      callback.calls.reset();
 
       $location.search({any: true});
       $rootScope.$digest();
@@ -491,7 +521,7 @@ describe('$route', function() {
         expect($route.current.controller).toBe(NotFoundCtrl);
         expect(onChangeSpy).toHaveBeenCalled();
 
-        onChangeSpy.reset();
+        onChangeSpy.calls.reset();
         $location.path('/foo');
         $rootScope.$digest();
 
@@ -510,7 +540,7 @@ describe('$route', function() {
 
       inject(function($route, $location, $rootScope) {
         var currentRoute, nextRoute,
-            onChangeSpy = jasmine.createSpy('onChange').andCallFake(function(e, next) {
+            onChangeSpy = jasmine.createSpy('onChange').and.callFake(function(e, next) {
           currentRoute = $route.current;
           nextRoute = next;
         });
@@ -530,7 +560,7 @@ describe('$route', function() {
         expect(nextRoute.templateUrl).toBe('404.html');
         expect($route.current.templateUrl).toBe('404.html');
         expect(onChangeSpy).toHaveBeenCalled();
-        onChangeSpy.reset();
+        onChangeSpy.calls.reset();
 
         // match regular route
         $location.path('/foo');
@@ -540,7 +570,7 @@ describe('$route', function() {
         expect(nextRoute.templateUrl).toBe('foo.html');
         expect($route.current.templateUrl).toEqual('foo.html');
         expect(onChangeSpy).toHaveBeenCalled();
-        onChangeSpy.reset();
+        onChangeSpy.calls.reset();
 
         // match otherwise route again
         $location.path('/anotherUnknownRoute');
@@ -891,14 +921,14 @@ describe('$route', function() {
         $rootScope.$digest();
         expect($location.path()).toBe('/foo');
         expect($route.current.templateUrl).toBe('foo.html');
-        expect(onChangeSpy.callCount).toBe(2);
+        expect(onChangeSpy).toHaveBeenCalledTimes(2);
 
-        onChangeSpy.reset();
+        onChangeSpy.calls.reset();
         $location.path('/baz');
         $rootScope.$digest();
         expect($location.path()).toBe('/bar');
         expect($route.current.templateUrl).toBe('bar.html');
-        expect(onChangeSpy.callCount).toBe(2);
+        expect(onChangeSpy).toHaveBeenCalledTimes(2);
       });
     });
 
@@ -944,6 +974,55 @@ describe('$route', function() {
     });
 
 
+    it('should properly process route params which are both eager and optional', function() {
+      module(function($routeProvider) {
+        $routeProvider.when('/foo/:param1*?/:param2', {templateUrl: 'foo.html'});
+      });
+
+      inject(function($location, $rootScope, $route) {
+        $location.path('/foo/bar1/bar2/bar3/baz');
+        $rootScope.$digest();
+
+        expect($location.path()).toEqual('/foo/bar1/bar2/bar3/baz');
+        expect($route.current.params.param1).toEqual('bar1/bar2/bar3');
+        expect($route.current.params.param2).toEqual('baz');
+        expect($route.current.templateUrl).toEqual('foo.html');
+
+        $location.path('/foo/baz');
+        $rootScope.$digest();
+
+        expect($location.path()).toEqual('/foo/baz');
+        expect($route.current.params.param1).toEqual(undefined);
+        expect($route.current.params.param2).toEqual('baz');
+        expect($route.current.templateUrl).toEqual('foo.html');
+
+      });
+    });
+
+
+    it('should properly interpolate optional and eager route vars ' +
+       'when redirecting from path with trailing slash', function() {
+      module(function($routeProvider) {
+        $routeProvider.when('/foo/:id?/:subid?', {templateUrl: 'foo.html'});
+        $routeProvider.when('/bar/:id*/:subid', {templateUrl: 'bar.html'});
+      });
+
+      inject(function($location, $rootScope, $route) {
+        $location.path('/foo/id1/subid2/');
+        $rootScope.$digest();
+
+        expect($location.path()).toEqual('/foo/id1/subid2');
+        expect($route.current.templateUrl).toEqual('foo.html');
+
+        $location.path('/bar/id1/extra/subid2/');
+        $rootScope.$digest();
+
+        expect($location.path()).toEqual('/bar/id1/extra/subid2');
+        expect($route.current.templateUrl).toEqual('bar.html');
+      });
+    });
+
+
     it('should allow custom redirectTo function to be used', function() {
       function customRedirectFn(routePathParams, path, search) {
         expect(routePathParams).toEqual({id: 'id3'});
@@ -972,14 +1051,14 @@ describe('$route', function() {
         $routeProvider.when('/foo/:id/:extra', {redirectTo: '/bar/:id'});
       });
       inject(function($browser, $route, $location, $rootScope) {
-        var $browserUrl = spyOnlyCallsWithArgs($browser, 'url').andCallThrough();
+        var $browserUrl = spyOnlyCallsWithArgs($browser, 'url').and.callThrough();
 
         $location.path('/foo/id3/eId');
         $rootScope.$digest();
 
         expect($location.path()).toEqual('/bar/id3');
-        expect($browserUrl.mostRecentCall.args)
-            .toEqual(['http://server/#/bar/id3?extra=eId', true, null]);
+        expect($browserUrl.calls.mostRecent().args)
+            .toEqual(['http://server/#!/bar/id3?extra=eId', true, null]);
       });
     });
   });
@@ -999,7 +1078,7 @@ describe('$route', function() {
         $rootScope.$digest();
         expect(reloaded).toHaveBeenCalled();
         expect($routeParams).toEqual({});
-        reloaded.reset();
+        reloaded.calls.reset();
 
         // trigger reload
         $location.search({foo: 'bar'});
@@ -1028,9 +1107,9 @@ describe('$route', function() {
         $location.path('/foo');
         $rootScope.$digest();
         expect(routeChange).toHaveBeenCalled();
-        expect(routeChange.callCount).toBe(2);
+        expect(routeChange).toHaveBeenCalledTimes(2);
         expect(routeUpdate).not.toHaveBeenCalled();
-        routeChange.reset();
+        routeChange.calls.reset();
 
         // don't trigger reload
         $location.search({foo: 'bar'});
@@ -1057,14 +1136,14 @@ describe('$route', function() {
         $location.path('/foo/aaa');
         $rootScope.$digest();
         expect(routeChange).toHaveBeenCalled();
-        expect(routeChange.callCount).toBe(2);
-        routeChange.reset();
+        expect(routeChange).toHaveBeenCalledTimes(2);
+        routeChange.calls.reset();
 
         $location.path('/foo/bbb');
         $rootScope.$digest();
         expect(routeChange).toHaveBeenCalled();
-        expect(routeChange.callCount).toBe(2);
-        routeChange.reset();
+        expect(routeChange).toHaveBeenCalledTimes(2);
+        routeChange.calls.reset();
 
         $location.search({foo: 'bar'});
         $rootScope.$digest();
@@ -1093,18 +1172,18 @@ describe('$route', function() {
         $location.path('/foo');
         $rootScope.$digest();
         expect(routeParamsWatcher).toHaveBeenCalledWith({});
-        routeParamsWatcher.reset();
+        routeParamsWatcher.calls.reset();
 
         // trigger reload
         $location.search({foo: 'bar'});
         $rootScope.$digest();
         expect(routeParamsWatcher).toHaveBeenCalledWith({foo: 'bar'});
-        routeParamsWatcher.reset();
+        routeParamsWatcher.calls.reset();
 
         $location.path('/bar/123').search({});
         $rootScope.$digest();
         expect(routeParamsWatcher).toHaveBeenCalledWith({barId: '123'});
-        routeParamsWatcher.reset();
+        routeParamsWatcher.calls.reset();
 
         // don't trigger reload
         $location.search({foo: 'bar'});
@@ -1161,34 +1240,107 @@ describe('$route', function() {
     });
 
     describe('reload', function() {
+      var $location;
+      var $log;
+      var $rootScope;
+      var $route;
+      var routeChangeStartSpy;
+      var routeChangeSuccessSpy;
 
-      it('should reload even if reloadOnSearch is false', function() {
-        var routeChangeSpy = jasmine.createSpy('route change');
-
-        module(function($routeProvider) {
-          $routeProvider.when('/bar/:barId', {controller: angular.noop, reloadOnSearch: false});
+      beforeEach(module(function($routeProvider) {
+        $routeProvider.when('/bar/:barId', {
+          template: '',
+          controller: controller,
+          reloadOnSearch: false
         });
 
-        inject(function($route, $location, $rootScope, $routeParams) {
-          $rootScope.$on('$routeChangeSuccess', routeChangeSpy);
+        function controller($log) {
+          $log.debug('initialized');
+        }
+      }));
+      beforeEach(inject(function($compile, _$location_, _$log_, _$rootScope_, _$route_) {
+        $location = _$location_;
+        $log = _$log_;
+        $rootScope = _$rootScope_;
+        $route = _$route_;
 
-          $location.path('/bar/123');
-          $rootScope.$digest();
-          expect($routeParams).toEqual({barId:'123'});
-          expect(routeChangeSpy).toHaveBeenCalledOnce();
-          routeChangeSpy.reset();
+        routeChangeStartSpy = jasmine.createSpy('routeChangeStart');
+        routeChangeSuccessSpy = jasmine.createSpy('routeChangeSuccess');
 
-          $location.path('/bar/123').search('a=b');
-          $rootScope.$digest();
-          expect($routeParams).toEqual({barId:'123', a:'b'});
-          expect(routeChangeSpy).not.toHaveBeenCalled();
+        $rootScope.$on('$routeChangeStart', routeChangeStartSpy);
+        $rootScope.$on('$routeChangeSuccess', routeChangeSuccessSpy);
 
-          $route.reload();
-          $rootScope.$digest();
-          expect($routeParams).toEqual({barId:'123', a:'b'});
-          expect(routeChangeSpy).toHaveBeenCalledOnce();
-        });
+        element = $compile('<div><div ng-view></div></div>')($rootScope);
+      }));
+
+      it('should reload the current route', function() {
+        $location.path('/bar/123');
+        $rootScope.$digest();
+        expect($location.path()).toBe('/bar/123');
+        expect(routeChangeStartSpy).toHaveBeenCalledOnce();
+        expect(routeChangeSuccessSpy).toHaveBeenCalledOnce();
+        expect($log.debug.logs).toEqual([['initialized']]);
+
+        routeChangeStartSpy.calls.reset();
+        routeChangeSuccessSpy.calls.reset();
+        $log.reset();
+
+        $route.reload();
+        $rootScope.$digest();
+        expect($location.path()).toBe('/bar/123');
+        expect(routeChangeStartSpy).toHaveBeenCalledOnce();
+        expect(routeChangeSuccessSpy).toHaveBeenCalledOnce();
+        expect($log.debug.logs).toEqual([['initialized']]);
+
+        $log.reset();
       });
+
+      it('should support preventing a route reload', function() {
+        $location.path('/bar/123');
+        $rootScope.$digest();
+        expect($location.path()).toBe('/bar/123');
+        expect(routeChangeStartSpy).toHaveBeenCalledOnce();
+        expect(routeChangeSuccessSpy).toHaveBeenCalledOnce();
+        expect($log.debug.logs).toEqual([['initialized']]);
+
+        routeChangeStartSpy.calls.reset();
+        routeChangeSuccessSpy.calls.reset();
+        $log.reset();
+
+        routeChangeStartSpy.and.callFake(function(evt) { evt.preventDefault(); });
+
+        $route.reload();
+        $rootScope.$digest();
+        expect($location.path()).toBe('/bar/123');
+        expect(routeChangeStartSpy).toHaveBeenCalledOnce();
+        expect(routeChangeSuccessSpy).not.toHaveBeenCalled();
+        expect($log.debug.logs).toEqual([]);
+      });
+
+      it('should reload even if reloadOnSearch is false', inject(function($routeParams) {
+        $location.path('/bar/123');
+        $rootScope.$digest();
+        expect($routeParams).toEqual({barId: '123'});
+        expect(routeChangeSuccessSpy).toHaveBeenCalledOnce();
+        expect($log.debug.logs).toEqual([['initialized']]);
+
+        routeChangeSuccessSpy.calls.reset();
+        $log.reset();
+
+        $location.search('a=b');
+        $rootScope.$digest();
+        expect($routeParams).toEqual({barId: '123', a: 'b'});
+        expect(routeChangeSuccessSpy).not.toHaveBeenCalled();
+        expect($log.debug.logs).toEqual([]);
+
+        $route.reload();
+        $rootScope.$digest();
+        expect($routeParams).toEqual({barId: '123', a: 'b'});
+        expect(routeChangeSuccessSpy).toHaveBeenCalledOnce();
+        expect($log.debug.logs).toEqual([['initialized']]);
+
+        $log.reset();
+      }));
     });
   });
 
@@ -1205,7 +1357,7 @@ describe('$route', function() {
 
         $location.path('/bar/1');
         $rootScope.$digest();
-        routeChangeSpy.reset();
+        routeChangeSpy.calls.reset();
 
         $route.updateParams({barId: '2'});
         $rootScope.$digest();
@@ -1228,7 +1380,7 @@ describe('$route', function() {
 
         $location.path('/bar/1/2/3/4');
         $rootScope.$digest();
-        routeChangeSpy.reset();
+        routeChangeSpy.calls.reset();
 
         $route.updateParams({barId: '5', fooId: '6', spamId: '7', eggId: '8'});
         $rootScope.$digest();
@@ -1251,7 +1403,7 @@ describe('$route', function() {
 
         $location.path('/bar/1/2/3/4');
         $rootScope.$digest();
-        routeChangeSpy.reset();
+        routeChangeSpy.calls.reset();
 
         $route.updateParams({barId: '5', fooId: '6'});
         $rootScope.$digest();
@@ -1276,7 +1428,7 @@ describe('$route', function() {
         $location.path('/bar/1/2/3');
         $location.search({initial: 'true'});
         $rootScope.$digest();
-        routeChangeSpy.reset();
+        routeChangeSpy.calls.reset();
 
         $route.updateParams({barId: '5', fooId: '6', eggId: '4'});
         $rootScope.$digest();
@@ -1288,9 +1440,33 @@ describe('$route', function() {
       });
     });
 
+    it('should not update query params when an optional property was previously not in path', function() {
+      var routeChangeSpy = jasmine.createSpy('route change');
+
+      module(function($routeProvider) {
+        $routeProvider.when('/bar/:barId/:fooId/:spamId/:eggId?', {controller: angular.noop});
+      });
+
+      inject(function($route, $routeParams, $location, $rootScope) {
+        $rootScope.$on('$routeChangeSuccess', routeChangeSpy);
+
+        $location.path('/bar/1/2/3');
+        $location.search({initial: 'true'});
+        $rootScope.$digest();
+        routeChangeSpy.calls.reset();
+
+        $route.updateParams({barId: '5', fooId: '6', eggId: '4'});
+        $rootScope.$digest();
+
+        expect($routeParams).toEqual({barId: '5', fooId: '6', spamId: '3', eggId: '4', initial: 'true'});
+        expect(routeChangeSpy).toHaveBeenCalledOnce();
+        expect($location.path()).toEqual('/bar/5/6/3/4');
+        expect($location.search()).toEqual({initial: 'true'});
+      });
+    });
 
     it('should complain if called without an existing route', inject(function($route) {
-      expect($route.updateParams).toThrowMinErr('ngRoute', 'norout');
+      expect(function() { $route.updateParams(); }).toThrowMinErr('ngRoute', 'norout');
     }));
   });
 });

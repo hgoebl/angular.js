@@ -1,15 +1,19 @@
 'use strict';
 
+/* globals support: false */
+
 describe('injector', function() {
   var providers;
   var injector;
   var providerInjector;
+  var controllerProvider;
 
-  beforeEach(module(function($provide, $injector) {
+  beforeEach(module(function($provide, $injector, $controllerProvider) {
     providers = function(name, factory, annotations) {
       $provide.factory(name, extend(factory, annotations || {}));
     };
     providerInjector = $injector;
+    controllerProvider = $controllerProvider;
   }));
   beforeEach(inject(function($injector) {
     injector = $injector;
@@ -30,6 +34,12 @@ describe('injector', function() {
     providers('a', function() {return 'Mi';});
     providers('b', function(mi) {return mi + 'sko';}, {$inject:['a']});
     expect(injector.get('b')).toEqual('Misko');
+  });
+
+
+  it('should check its modulesToLoad argument', function() {
+    expect(function() { angular.injector('test'); })
+        .toThrowMinErr('ng', 'areq');
   });
 
 
@@ -74,6 +84,22 @@ describe('injector', function() {
   });
 
 
+  it('should provide the caller name if given', function() {
+    expect(function() {
+      injector.get('idontexist', 'callerName');
+    }).toThrowMinErr("$injector", "unpr", "Unknown provider: idontexistProvider <- idontexist <- callerName");
+  });
+
+
+  it('should provide the caller name for controllers', function() {
+    controllerProvider.register('myCtrl', function(idontexist) {});
+    var $controller = injector.get('$controller');
+    expect(function() {
+      $controller('myCtrl', {$scope: {}});
+    }).toThrowMinErr("$injector", "unpr", "Unknown provider: idontexistProvider <- idontexist <- myCtrl");
+  });
+
+
   it('should not corrupt the cache when an object fails to get instantiated', function() {
     expect(function() {
       injector.get('idontexist');
@@ -96,6 +122,10 @@ describe('injector', function() {
 
   it('should create a new $injector for the run phase', inject(function($injector) {
     expect($injector).not.toBe(providerInjector);
+  }));
+
+  it('should have an false strictDi property', inject(function($injector) {
+    expect($injector.strictDi).toBe(false);
   }));
 
 
@@ -211,6 +241,12 @@ describe('injector', function() {
       expect($f_n0.$inject).toEqual(['$a_']);
     });
 
+    it('should handle functions with overridden toString', function() {
+      function fn(a) {}
+      fn.toString = function() { return 'fn'; };
+      expect(annotate(fn)).toEqual(['a']);
+      expect(fn.$inject).toEqual(['a']);
+    });
 
     it('should throw on non function arg', function() {
       expect(function() {
@@ -219,8 +255,76 @@ describe('injector', function() {
     });
 
 
+    describe('es6', function() {
+      /*jshint -W061 */
+      if (support.ES6Function) {
+        // The functions are generated using `eval` as just having the ES6 syntax can break some browsers.
+        it('should be possible to annotate functions that are declared using ES6 syntax', function() {
+          expect(annotate(eval('({ fn(x) { return; } })').fn)).toEqual(['x']);
+        });
+      }
+
+
+      if (support.fatArrow) {
+        it('should create $inject for arrow functions', function() {
+          expect(annotate(eval('(a, b) => a'))).toEqual(['a', 'b']);
+        });
+      }
+
+
+      if (support.fatArrow) {
+        it('should create $inject for arrow functions with no parenthesis', function() {
+          expect(annotate(eval('a => a'))).toEqual(['a']);
+        });
+      }
+
+
+      if (support.fatArrow) {
+        it('should take args before first arrow', function() {
+          expect(annotate(eval('a => b => b'))).toEqual(['a']);
+        });
+
+        // Support: Chrome 50-51 only
+        // TODO (gkalpak): Remove when Chrome v52 is relased.
+        // it('should be able to inject fat-arrow function', function() {
+        //   inject(($injector) => {
+        //     expect($injector).toBeDefined();
+        //   });
+        // });
+      }
+
+      if (support.classes) {
+        it('should be possible to instantiate ES6 classes', function() {
+          providers('a', function() { return 'a-value'; });
+          var Clazz = eval('(class { constructor(a) { this.a = a; } aVal() { return this.a; } })');
+          var instance = injector.instantiate(Clazz);
+          expect(instance).toEqual(new Clazz('a-value'));
+          expect(instance.aVal()).toEqual('a-value');
+        });
+
+        // Support: Chrome 50-51 only
+        // TODO (gkalpak): Remove when Chrome v52 is relased.
+        // it('should be able to invoke classes', function() {
+        //   class Test {
+        //     constructor($injector) {
+        //       this.$injector = $injector;
+        //     }
+        //   }
+        //   var instance = injector.invoke(Test, null, null, 'Test');
+
+        //   expect(instance.$injector).toBe(injector);
+        // });
+      }
+      /*jshint +W061 */
+    });
+
+
     it('should publish annotate API', function() {
-      expect(injector.annotate).toBe(annotate);
+      expect(angular.mock.$$annotate).toBe(annotate);
+      spyOn(angular.mock, '$$annotate').and.callThrough();
+      function fn() {}
+      injector.annotate(fn);
+      expect(angular.mock.$$annotate).toHaveBeenCalledWith(fn);
     });
   });
 
@@ -628,6 +732,23 @@ describe('injector', function() {
           expect(log.join('; ')).
             toBe('myDecoratedService:input,dependency1; myService:decInput; dec+origReturn');
         });
+
+
+        it('should allow for decorators to $injector', function() {
+          injector = createInjector(['ng', function($provide) {
+            $provide.decorator('$injector', function($delegate) {
+              return extend({}, $delegate, {get: function(val) {
+                if (val === 'key') {
+                  return 'value';
+                }
+                return $delegate.get(val);
+              }});
+            });
+          }]);
+
+          expect(injector.get('key')).toBe('value');
+          expect(injector.get('$http')).not.toBeUndefined();
+        });
       });
     });
 
@@ -918,7 +1039,7 @@ describe('injector', function() {
         createInjector([function($provide) {
           $provide.value('name', 'angular');
         }, instanceLookupInModule]);
-      }).toThrowMatching(/\[\$injector:unpr] Unknown provider: name/);
+      }).toThrowError(/\[\$injector:unpr] Unknown provider: name/);
     });
   });
 });
@@ -954,7 +1075,7 @@ describe('strict-di injector', function() {
       });
     });
     inject(function($injector) {
-      expect (function() {
+      expect(function() {
         $injector.invoke(function($test2) {});
       }).toThrowMinErr('$injector', 'strictdi');
     });
@@ -968,7 +1089,7 @@ describe('strict-di injector', function() {
       });
     });
     inject(function($injector) {
-      expect (function() {
+      expect(function() {
         $injector.invoke(['$test', function($test) {}]);
       }).toThrowMinErr('$injector', 'strictdi');
     });
@@ -1014,4 +1135,8 @@ describe('strict-di injector', function() {
     inject(function($test) {});
     expect(called).toBe(true);
   });
+
+  it('should set strictDi property to true on the injector instance', inject(function($injector) {
+    expect($injector.strictDi).toBe(true);
+  }));
 });

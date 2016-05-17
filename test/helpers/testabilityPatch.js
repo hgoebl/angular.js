@@ -1,17 +1,32 @@
-/* global jQuery: true, uid: true */
+/* global jQuery: true, uid: true, jqCache: true */
 'use strict';
-
-/**
- * Here is the problem: http://bugs.jquery.com/ticket/7292
- * basically jQuery treats change event on some browsers (IE) as a
- * special event and changes it form 'change' to 'click/keydown' and
- * few others. This horrible hack removes the special treatment
- */
-if (window._jQuery) _jQuery.event.special.change = undefined;
 
 if (window.bindJQuery) bindJQuery();
 
+var supportTests = {
+  classes: '(class {})',
+  fatArrow: 'a => a',
+  ES6Function: '({ fn(x) { return; } })'
+};
+
+var support = {};
+
+for (var prop in supportTests) {
+  if (supportTests.hasOwnProperty(prop)) {
+    /*jshint -W061 */
+    try {
+      eval(supportTests[prop]);
+      support[prop] = true;
+    } catch (e) {
+      support[prop] = false;
+    }
+    /*jshint +W061 */
+  }
+}
+
+
 beforeEach(function() {
+
   // all this stuff is not needed for module tests, where jqlite and publishExternalAPI and jqLite are not global vars
   if (window.publishExternalAPI) {
     publishExternalAPI(angular);
@@ -28,7 +43,10 @@ beforeEach(function() {
 
     // reset to jQuery or default to us.
     bindJQuery();
-    jqLiteCacheSizeInit();
+
+    // Clear the cache to prevent memory leak failures from previous tests
+    // breaking subsequent tests unnecessarily
+    jqCache = jqLite.cache = {};
   }
 
   angular.element(document.body).empty().removeData();
@@ -36,6 +54,18 @@ beforeEach(function() {
 
 afterEach(function() {
   var count, cache;
+
+  // both of these nodes are persisted across tests
+  // and therefore the hashCode may be cached
+  var node = document.querySelector('html');
+  if (node) {
+    node.$$hashKey = null;
+  }
+  var bod = document.body;
+  if (bod) {
+    bod.$$hashKey = null;
+  }
+  document.$$hashKey = null;
 
   if (this.$injector) {
     var $rootScope = this.$injector.get('$rootScope');
@@ -72,21 +102,10 @@ afterEach(function() {
     }
   }
 
-
   // copied from Angular.js
-  // we need these two methods here so that we can run module tests with wrapped angular.js
-  function sortedKeys(obj) {
-    var keys = [];
-    for (var key in obj) {
-      if (obj.hasOwnProperty(key)) {
-        keys.push(key);
-      }
-    }
-    return keys.sort();
-  }
-
+  // we need this method here so that we can run module tests with wrapped angular.js
   function forEachSorted(obj, iterator, context) {
-    var keys = sortedKeys(obj);
+    var keys = Object.keys(obj).sort();
     for (var i = 0; i < keys.length; i++) {
       iterator.call(context, obj[keys[i]], keys[i]);
     }
@@ -112,12 +131,8 @@ function dealoc(obj) {
   }
 
   function cleanup(element) {
-    element.off().removeData();
-    if (window.jQuery) {
-      // jQuery 2.x doesn't expose the cache storage; ensure all element data
-      // is removed during its cleanup.
-      jQuery.cleanData([element]);
-    }
+    angular.element.cleanData(element);
+
     // Note:  We aren't using element.contents() here.  Under jQuery, element.contents() can fail
     // for IFRAME elements.  jQuery explicitly uses (element.contentDocument ||
     // element.contentWindow.document) and both properties are null for IFRAMES that aren't attached
@@ -131,14 +146,7 @@ function dealoc(obj) {
 
 
 function jqLiteCacheSize() {
-  var size = 0;
-  forEach(jqLite.cache, function() { size++; });
-  return size - jqLiteCacheSize.initSize;
-}
-jqLiteCacheSize.initSize = 0;
-
-function jqLiteCacheSizeInit() {
-  jqLiteCacheSize.initSize = jqLiteCacheSize.initSize + jqLiteCacheSize();
+  return Object.keys(jqLite.cache).length;
 }
 
 
@@ -170,8 +178,9 @@ function sortedHtml(element, showNgClass) {
         attrs.push(' class="' + className + '"');
       }
       for (var i = 0; i < attributes.length; i++) {
-        if (i > 0 && attributes[i] == attributes[i - 1])
+        if (i > 0 && attributes[i] == attributes[i - 1]) {
           continue; //IE9 creates dupes. Ignore them!
+        }
 
         var attr = attributes[i];
         if (attr.name.match(/^ng[\:\-]/) ||
@@ -231,8 +240,9 @@ function sortedHtml(element, showNgClass) {
         var tmp = style;
         style = [];
         forEach(tmp, function(value) {
-          if (!value.match(/^max[^\-]/))
+          if (!value.match(/^max[^\-]/)) {
             style.push(value);
+          }
         });
         if (style.length) {
           html += ' style="' + style.join('; ') + ';"';
@@ -339,3 +349,69 @@ window.dump = function() {
     return angular.mock.dump(arg);
   }));
 };
+
+function generateInputCompilerHelper(helper) {
+  beforeEach(function() {
+    module(function($compileProvider) {
+      $compileProvider.directive('attrCapture', function() {
+        return function(scope, element, $attrs) {
+          helper.attrs = $attrs;
+        };
+      });
+    });
+    inject(function($compile, $rootScope, $sniffer) {
+
+      helper.compileInput = function(inputHtml, mockValidity, scope) {
+
+        scope = helper.scope = scope || $rootScope;
+
+        // Create the input element and dealoc when done
+        helper.inputElm = jqLite(inputHtml);
+
+        // Set up mock validation if necessary
+        if (isObject(mockValidity)) {
+          VALIDITY_STATE_PROPERTY = 'ngMockValidity';
+          helper.inputElm.prop(VALIDITY_STATE_PROPERTY, mockValidity);
+        }
+
+        // Create the form element and dealoc when done
+        helper.formElm = jqLite('<form name="form"></form>');
+        helper.formElm.append(helper.inputElm);
+
+        // Compile the lot and return the input element
+        $compile(helper.formElm)(scope);
+
+        spyOn(scope.form, '$addControl').and.callThrough();
+        spyOn(scope.form, '$$renameControl').and.callThrough();
+
+        scope.$digest();
+
+        return helper.inputElm;
+      };
+
+      helper.changeInputValueTo = function(value) {
+        helper.inputElm.val(value);
+        browserTrigger(helper.inputElm, $sniffer.hasEvent('input') ? 'input' : 'change');
+      };
+
+      helper.changeGivenInputTo = function(inputElm, value) {
+        inputElm.val(value);
+        browserTrigger(inputElm, $sniffer.hasEvent('input') ? 'input' : 'change');
+      };
+
+      helper.dealoc = function() {
+        dealoc(helper.inputElm);
+        dealoc(helper.formElm);
+      };
+    });
+  });
+
+  afterEach(function() {
+    helper.dealoc();
+  });
+
+  afterEach(function() {
+    VALIDITY_STATE_PROPERTY = 'validity';
+  });
+}
+
