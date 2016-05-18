@@ -8,8 +8,6 @@ angular.module('DocsController', [])
 
   $scope.fullscreen = true;
 
-  $scope.openPlunkr = openPlunkr;
-
   $scope.docsVersion = NG_VERSION.isSnapshot ? 'snapshot' : NG_VERSION.version;
 
   $scope.navClass = function(navItem) {
